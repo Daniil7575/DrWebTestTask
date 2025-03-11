@@ -7,6 +7,7 @@ class Database:
     def __init__(self):
         """Initialize the database with a main store as the base layer."""
         self.stack = [{}]
+        self.to_delete = [set()]
         self.commands = {
             "SET": self.set_command,
             "GET": self.get_command,
@@ -20,7 +21,7 @@ class Database:
 
     def _get_value(self, key) -> str:
         """Retrieve the value of a key from the transaction stack."""
-        return self.stack[-1].get(key, self.NULL_VALUE)
+        return self.stack[-1].get(key, self.NULL_VALUE) or self.NULL_VALUE
 
     def set_command(self, args: List[str]) -> None:
         """Set key to value in current transaction."""
@@ -35,9 +36,13 @@ class Database:
     def unset_command(self, args: List[str]) -> None:
         """Mark key as unset in current transaction."""
         key = args[0]
-        if self.stack[-1].get(key):
-            del self.stack[-1][key]
-
+        if len(self.stack) == 1:
+            if self.stack[-1].get(key):
+                del self.stack[-1][key]
+        else:
+            self.stack[-1][key] = None
+            self.to_delete[-1].add(key)
+    
     def counts_command(self, args: List[str]) -> None:
         """Count keys with the given effective value."""
         value = args[0]
@@ -59,17 +64,26 @@ class Database:
     def begin_command(self, args: List[str]) -> None:
         """Start a new transaction."""
         self.stack.append(self.stack[-1].copy())
+        self.to_delete.append(self.to_delete[-1].copy())
 
     def rollback_command(self, args: List[str]) -> None:
         """Discard the current transaction."""
         if len(self.stack) > 1:
             self.stack.pop()
+            self.to_delete.pop()
 
     def commit_command(self, args: List[str]) -> None:
         """Merge current transaction into parent."""
         if len(self.stack) > 1:
             current = self.stack.pop()
             self.stack[-1].update(current)
+            to_delete = self.to_delete.pop()
+            self.to_delete[-1].update(to_delete)
+        if len(self.to_delete) == 1:
+            for key in self.to_delete[-1]:
+                if key in self.stack[-1]:
+                    del self.stack[-1][key]
+            self.to_delete[-1] = set()
 
     def run(self):
         """Run the interactive console loop."""

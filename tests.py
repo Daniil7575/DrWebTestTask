@@ -116,7 +116,15 @@ class TestDatabase(unittest.TestCase):
         with redirect_stdout(StringIO()) as f:
             self.db.get_command(["key"])
         self.assertEqual(f.getvalue().strip(), "value")
-
+    
+    def test_get_unsetted_value_after_commit(self):
+        self.db.set_command(["key", "value"])
+        self.db.begin_command([])
+        self.db.unset_command(["key"])
+        self.db.commit_command([])
+        with redirect_stdout(StringIO()) as f:
+            self.db.get_command(["key"])
+        self.assertEqual(f.getvalue().strip(), self.db.NULL_VALUE)
 
 if __name__ == "__main__":
     unittest.main()
